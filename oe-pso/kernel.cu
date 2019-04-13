@@ -9,38 +9,54 @@
 
 #include <iostream>
 
-#include "location.cu"	
-#include "particle.cu"
-
 #define N 50
 
 using namespace std;
 
-__device__ Particle dev_particles[N];
-Particle particles[N];
+class Managed {
+public:
+	void *operator new(size_t len) {
+		void *ptr;
+		cudaMallocManaged(&ptr, len);
+		cudaDeviceSynchronize();
+		return ptr;
+	}
 
-__device__ Position dev_globalOptimum;
+	void operator delete(void *ptr) {
+		cudaDeviceSynchronize();
+		cudaFree(ptr);
+	}
+};
+
+class Location : public Managed
+{
+public:
+	float x;
+	float y;
+
+	Location(float x, float y) {
+		this->x = x;
+		this->y = y;
+	}
+};
+
+class Particle : public Managed
+{
+public:
+	Location * position;
+	Location * localOptimum;
+};
+
+__device__ Particle dev_particles[N];
+Particle host_particles[N];
 
 void initParticles() {
-	srand(time(NULL));
 	for (size_t i = 0; i < N; i++)
 	{
-		float x = rand();
-		float y = rand();
-		Position location = Position(&x, &y);
-		particles[i].position = &location;
-
+		srand(time(NULL));
+		host_particles[i] = Particle();
+		host_particles[i].position = new Location(rand(), rand());
 	}
-} 
-int main()
-{
-	//initialize particles with random positions (on host)
-	initParticles();
-
-	//copy particles from host to device
-	cudaMemcpyToSymbol(particles, dev_particles, N * sizeof(Particle));
-
-    return 0;
 }
 
 void checkError() {
@@ -51,3 +67,20 @@ void checkError() {
 		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
 	}
 }
+
+int main()
+{
+	//initialize particles with random positions (on host)
+	initParticles();
+
+	//copy particles from host to device
+	cudaMemcpyToSymbol(host_particles, dev_particles, N * sizeof(Particle));
+
+	cout << "Atmasolva";
+
+	cin.get();
+
+    return 0;
+}
+
+

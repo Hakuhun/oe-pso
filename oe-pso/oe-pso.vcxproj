@@ -79,8 +79,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="kernel.cu" />
-    <CudaCompile Include="Location.cu" />
-    <CudaCompile Include="Particle.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
