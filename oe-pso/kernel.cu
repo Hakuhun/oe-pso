@@ -10,6 +10,9 @@
 #include <iostream>
 
 #define N 50
+#define MIN 0
+#define MAX 50
+#define RANDOM(MIN, MAX) rand()%(MAX-MIN+1)+MIN
 
 using namespace std;
 
@@ -34,33 +37,33 @@ public:
 	float x;
 	float y;
 
+	Location() {}
+
 	Location(float x, float y) {
 		this->x = x;
 		this->y = y;
 	}
 
-	Location Location::operator=(const Location &mng) {
+	Location operator=(const Location &mng) {
 		x = mng.x;
 		y = mng.y;
 		return *this;
 	}
 
-	Location Location::operator-(const Location &mng) {
-		float x = this->x - mng.x;
-		float y = this->y - mng.y;
-		return Location(x, y);
+	//Két vektor különbsége
+	Location operator-(const Location &mng) {
+		return Location(this->x - mng.x, this->y - mng.y);
 	}
 
-	Location Location::operator+(const Location &mng) {
-		float x = x + mng.x;
-		float y = y + mng.y;
-		return Location(x, y);
+	//Két vektor összege
+	Location operator+(const Location &mng) {
+		Location result = Location(this->x + mng.x, this->y + mng.y);
+		return result;
 	}
 
-	Location Location::operator*(const int number) {
-		float x = x * number;
-		float y = y * number;
-		return Location(x, y);
+	//számmal való szorzás
+	Location operator*(const int &number) {
+		return Location(this->x * number, this->y * number);
 	}
 };
 
@@ -85,7 +88,7 @@ public:
 __device__ Particle dev_particles[N];
 Particle host_particles[N];
 
-__device__ Location * globalOptimum = new Location(1,1);
+__device__ Location *dev_globalOptimum;
 
 //Innertial coefficent (innerciális együttható)
 __device__ float w = 0.5;
@@ -101,20 +104,17 @@ __device__ void CalculateVelocity(Particle * particle) {
 	//Sets the direction to the previous velocity
 	Location * previous_velocity = particle->velocity;
 	
-	int r1 = rand() % (1 - 0 + 1) + 0;
-	int r2 = rand() % (1 - 0 + 1) + 0;
-
-	particle->velocity = particle->direction * 2;
-
-	//particle->velocity = new Location(x,y);
 }
 
 void initParticles() {
+	int min = MIN, max = MAX;
 	for (size_t i = 0; i < N; i++)
 	{
 		srand(time(NULL));
 		host_particles[i] = Particle();
-		host_particles[i].position = new Location(rand(), rand());
+		host_particles[i].position = new Location(RANDOM(MIN, MAX), RANDOM(MIN, MAX));
+		host_particles[i].localOptimum = new Location(RANDOM(MIN, MAX), RANDOM(MIN, MAX));
+		host_particles[i].direction = new Location(RANDOM(MIN, MAX), RANDOM(MIN, MAX));
 	}
 }
 
@@ -123,7 +123,7 @@ void checkError() {
 
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
+		cout << stderr, cudaGetErrorName(cudaStatus);
 	}
 }
 
@@ -134,6 +134,11 @@ int main()
 
 	//copy particles from host to device
 	cudaMemcpyToSymbol(host_particles, dev_particles, N * sizeof(Particle));
+	checkError();
+	//initalize global optimum variable
+	Location * host_gOptimum = new Location(1, 1);
+	cudaMemcpyToSymbol(host_gOptimum, dev_globalOptimum, N * sizeof(Location));
+	checkError();
 
 	cout << "Atmasolva";
 
