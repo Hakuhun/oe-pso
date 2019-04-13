@@ -38,17 +38,76 @@ public:
 		this->x = x;
 		this->y = y;
 	}
+
+	Location Location::operator=(const Location &mng) {
+		x = mng.x;
+		y = mng.y;
+		return *this;
+	}
+
+	Location Location::operator-(const Location &mng) {
+		float x = this->x - mng.x;
+		float y = this->y - mng.y;
+		return Location(x, y);
+	}
+
+	Location Location::operator+(const Location &mng) {
+		float x = x + mng.x;
+		float y = y + mng.y;
+		return Location(x, y);
+	}
+
+	Location Location::operator*(const int number) {
+		float x = x * number;
+		float y = y * number;
+		return Location(x, y);
+	}
 };
 
 class Particle : public Managed
 {
 public:
+
+	Particle() {
+
+	}
+
+	//vector of the current location
 	Location * position;
+	//vector of the particle's local optimum
 	Location * localOptimum;
+	//vector of the position where the particle is heading to
+	Location * direction;
+	//
+	Location * velocity;
 };
 
 __device__ Particle dev_particles[N];
 Particle host_particles[N];
+
+__device__ Location * globalOptimum = new Location(1,1);
+
+//Innertial coefficent (innerciális együttható)
+__device__ float w = 0.5;
+
+//Acceleration coefficent (gyorsítási együttható)
+__device__ float c1 = 0.2;
+
+//Acceleration coefficent (gyorsítási együttható)
+__device__ float c2 = 0.2;
+
+__device__ void CalculateVelocity(Particle * particle) {
+	//Calculate the velocity
+	//Sets the direction to the previous velocity
+	Location * previous_velocity = particle->velocity;
+	
+	int r1 = rand() % (1 - 0 + 1) + 0;
+	int r2 = rand() % (1 - 0 + 1) + 0;
+
+	particle->velocity = particle->direction * 2;
+
+	//particle->velocity = new Location(x,y);
+}
 
 void initParticles() {
 	for (size_t i = 0; i < N; i++)
@@ -77,6 +136,8 @@ int main()
 	cudaMemcpyToSymbol(host_particles, dev_particles, N * sizeof(Particle));
 
 	cout << "Atmasolva";
+
+
 
 	cin.get();
 
