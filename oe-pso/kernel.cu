@@ -12,7 +12,7 @@
 
 #include <iostream>
 
-#define N 5
+#define N 10
 #define BLOCK_SIZE 5
 #define MIN2 0
 #define MAX2 50
@@ -92,10 +92,10 @@ __global__ void Evaluation() {
 			DistanceCalculate(particle->direction - particle->velocity, dev_globalOptimum))
 		{
 			dev_globalOptimum = particle->direction;
+			__syncthreads();
 			printf("(%d) uj globalis optimuma:  x: %.2f, y : %.2f\n", index, dev_globalOptimum.x, dev_globalOptimum.y);
 		}
 	}
-	__syncthreads();
 }
 
 __device__ float cudaRand()
@@ -155,7 +155,6 @@ __global__ void checkParticles(){
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
 	Particle particle = dev_particles[index];
 	printf("(%d) x: %.2f, y : %.2f\n",index, particle.direction.x, particle.direction.y);
-	__syncthreads();
 }
 
 void initParticles() {
@@ -199,7 +198,7 @@ int main()
 
 	int i = 0;
 	
-	while (i < N)
+	while (i < 10)
 	{
 		CalculateVelocity << <kernelStart >> > ();
 		checkError();
