@@ -5,7 +5,6 @@
 #include "vector_functions.h"
 #include <curand_kernel.h>
 #include <ctime>
-#include <helper_cuda.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +20,7 @@
 
 using namespace std;
 
-typedef struct Particle {
+typedef struct PSOParticle {
 	//vector of the current location
 	float2 position;
 	//vector of the particle's local optimum
@@ -29,11 +28,11 @@ typedef struct Particle {
 	//vector of the position where the particle is heading to
 	float2 direction;
 
-	float2 velocity = make_float2(1,1);
-} Particle;
+	float2 velocity;
+}Particle;
 
-__device__ Particle * dev_particles[N];
-Particle * host_particles[N];
+__device__ Particle dev_particles[N];
+Particle host_particles[N];
 
 __device__ float2 dev_globalOptimum;
 
@@ -81,7 +80,7 @@ __device__ double DistanceCalculate(float2 a, float2 b)
 __global__ void Evaluation() {
 
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = dev_particles[index];
+	Particle * particle = &dev_particles[index];
 
 	if (DistanceCalculate(particle->direction, particle->localOptimum) <
 		DistanceCalculate(particle->direction - particle->velocity, particle->localOptimum))
@@ -117,7 +116,7 @@ __device__ float cudaRandRange(int min, int max)
 
 __global__ void CalculateVelocity() {
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = dev_particles[index];
+	Particle * particle = &dev_particles[index];
 
 	//Calculate the velocity
 	particle->velocity = w * particle->velocity
@@ -128,35 +127,35 @@ __global__ void CalculateVelocity() {
 
 __global__ void CalculateNewDirection() {
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = dev_particles[index];
+	Particle * particle = &dev_particles[index];
 
 	particle->direction = particle->direction + particle->velocity;
 }
 
 __global__ void checkParticles(){
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = dev_particles[index];
-	printf("Value is: %d\n", particle->direction.x);
+	Particle particle = dev_particles[index];
+	printf("Value is: %d\n", particle.direction.x);
 }
 
 void initParticles() {
 	srand(time(NULL));
 	for (size_t i = 0; i < N; i++)
 	{
-		host_particles[i] = new Particle();
-		host_particles[i]->position = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
-		host_particles[i]->localOptimum = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
-		host_particles[i]->direction = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
+		host_particles[i] = Particle();
+		host_particles[i].position = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
+		host_particles[i].localOptimum = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
+		host_particles[i].direction = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
 	}
 }
 
 __global__ void kernelInitParticles() {
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	dev_particles[index] = new Particle();
-	dev_particles[index]->position = make_float2(cudaRandRange(0,100), cudaRandRange(0,100));
-	dev_particles[index]->localOptimum = make_float2(cudaRand(), cudaRand());
-	dev_particles[index]->direction = make_float2(cudaRand(), cudaRand());
-	//printf("Value is: %d\n", dev_particles[index]->direction.x);
+	dev_particles[index] = Particle();
+	dev_particles[index].position = make_float2(cudaRandRange(0,100), cudaRandRange(0,100));
+	dev_particles[index].localOptimum = make_float2(cudaRand(), cudaRand());
+	dev_particles[index].direction = make_float2(cudaRand(), cudaRand());
+	printf("Value is: %d\n", dev_particles[index].direction.x);
 }
 
 void checkError() {
@@ -173,9 +172,13 @@ int main()
 	initParticles();
 
 	//copy particles from host to device
-	cudaMemcpyToSymbol(dev_particles, host_particles, sizeof(Particle));
+	cudaMemcpyToSymbol(dev_particles, host_particles, N * sizeof(Particle));
 	checkError();
-	kernelInitParticles << <1, N >> > ();
+	
+	kernelInitParticles << <10, N/10-1 >> > ();
+	checkError();
+
+	checkParticles << <1, N >> > ();
 	checkError();
 
 	//initalize global optimum variable
