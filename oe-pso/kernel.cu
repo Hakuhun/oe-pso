@@ -14,39 +14,14 @@
 
 #include <iostream>
 
-#define N 1000
+#define N 100
 #define MIN2 0
 #define MAX2 50
-#define RANDOM(a, b) rand()%(MAX2-MIN2+1)+(MIN2)
-#define fitness(x) DistanceCalculate()
+#define RANDOM(a, b) rand()%(a-b+1)+(a)
 
 using namespace std;
 
-//class Managed {
-//public:
-//
-//
-//
-//	void *operator new(size_t len) {
-//		void *ptr;
-//		cudaMallocManaged(&ptr, len);
-//		cudaDeviceSynchronize();
-//		return ptr;
-//	}
-//
-//	void operator delete(void *ptr) {
-//		cudaDeviceSynchronize();
-//		cudaFree(ptr);
-//	}
-//};
-
-class Particle /*: public Managed*/
-{
-public:
-	__host__ __device__ Particle() {
-		velocity = make_float2(0, 0);
-	}
-
+typedef struct Particle {
 	//vector of the current location
 	float2 position;
 	//vector of the particle's local optimum
@@ -54,16 +29,13 @@ public:
 	//vector of the position where the particle is heading to
 	float2 direction;
 
-	float2 velocity;
-};
+	float2 velocity = make_float2(1,1);
+} Particle;
 
-__device__ Particle dev_particles[N];
-Particle host_particles[N];
+__device__ Particle * dev_particles[N];
+Particle * host_particles[N];
 
 __device__ float2 dev_globalOptimum;
-
-int asd5[N];
-__device__ int dasd[N];
 
 //Innertial coefficent (innerciális együttható)
 __constant__ float w = 0.5;
@@ -109,7 +81,7 @@ __device__ double DistanceCalculate(float2 a, float2 b)
 __global__ void Evaluation() {
 
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = &dev_particles[index];
+	Particle * particle = dev_particles[index];
 
 	if (DistanceCalculate(particle->direction, particle->localOptimum) <
 		DistanceCalculate(particle->direction - particle->velocity, particle->localOptimum))
@@ -133,9 +105,19 @@ __device__ float cudaRand()
 	return curand_uniform_double(&state);
 }
 
+__device__ float cudaRandRange(int min, int max)
+{
+	int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+	curandState state;
+	curand_init((unsigned long long)clock() + tId, 0, 0, &state);
+	float myrandf = curand_uniform_double(&state);
+	myrandf *= (max-min + 0.999999);
+	return myrandf;
+}
+
 __global__ void CalculateVelocity() {
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = &dev_particles[index];
+	Particle * particle = dev_particles[index];
 
 	//Calculate the velocity
 	particle->velocity = w * particle->velocity
@@ -146,27 +128,35 @@ __global__ void CalculateVelocity() {
 
 __global__ void CalculateNewDirection() {
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = &dev_particles[index];
+	Particle * particle = dev_particles[index];
 
 	particle->direction = particle->direction + particle->velocity;
 }
 
 __global__ void checkParticles(){
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = &dev_particles[index];
+	Particle * particle = dev_particles[index];
 	printf("Value is: %d\n", particle->direction.x);
 }
 
 void initParticles() {
+	srand(time(NULL));
 	for (size_t i = 0; i < N; i++)
 	{
-		srand(time(NULL));
-		host_particles[i] = Particle();
-		host_particles[i].position = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
-		host_particles[i].localOptimum = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
-		host_particles[i].direction = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
-		asd5[i] = RANDOM(0, 100);
+		host_particles[i] = new Particle();
+		host_particles[i]->position = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
+		host_particles[i]->localOptimum = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
+		host_particles[i]->direction = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
 	}
+}
+
+__global__ void kernelInitParticles() {
+	int index = blockDim.x * blockIdx.x + threadIdx.x;
+	dev_particles[index] = new Particle();
+	dev_particles[index]->position = make_float2(cudaRandRange(0,100), cudaRandRange(0,100));
+	dev_particles[index]->localOptimum = make_float2(cudaRand(), cudaRand());
+	dev_particles[index]->direction = make_float2(cudaRand(), cudaRand());
+	//printf("Value is: %d\n", dev_particles[index]->direction.x);
 }
 
 void checkError() {
@@ -177,26 +167,24 @@ void checkError() {
 	}
 }
 
-
-
 int main()
 {
 	//initialize particles with random positions (on host)
 	initParticles();
 
 	//copy particles from host to device
-	cudaMemcpyToSymbol(dev_particles, host_particles, N * sizeof(Particle));
+	cudaMemcpyToSymbol(dev_particles, host_particles, sizeof(Particle));
+	checkError();
+	kernelInitParticles << <1, N >> > ();
 	checkError();
 
 	//initalize global optimum variable
 	float2 host_gOptimum = make_float2(1, 1);
 	cudaMemcpyToSymbol(&dev_globalOptimum, &host_gOptimum, N * sizeof(float2));
-
 	checkError();
-	cudaMemcpyToSymbol(dasd, asd5, N * sizeof(int));
-
-	checkParticles << <1, N >> > ();
-	checkError();
+	
+	////checkParticles << <1, N >> > ();
+	////checkError();
 
 	Evaluation << <1, N >> > ();
 	checkError();
