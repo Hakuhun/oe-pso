@@ -12,10 +12,12 @@
 
 #include <iostream>
 
-#define N 100
+#define N 5
+#define BLOCK_SIZE 5
 #define MIN2 0
 #define MAX2 50
 #define RANDOM(a, b) rand()%(a-b+1)+(a)
+#define kernelStart BLOCK_SIZE, N/BLOCK_SIZE
 
 using namespace std;
 
@@ -59,12 +61,12 @@ inline __host__ __device__ float2 operator*(float2 a, float2 b)
 	return make_float2(a.x * b.x, a.y * b.y);
 }
 
-inline __host__ __device__ float2 operator*(float2 a, int b)
+inline __host__ __device__ float2 operator*(float2 a, float b)
 {
 	return make_float2(a.x * b, a.y * b);
 }
 
-inline __host__ __device__ float2 operator*(int b, float2 a)
+inline __host__ __device__ float2 operator*(float b, float2 a)
 {
 	return make_float2(a.x * b, a.y * b);
 }
@@ -81,14 +83,16 @@ __global__ void Evaluation() {
 	Particle * particle = &dev_particles[index];
 
 	if (DistanceCalculate(particle->direction, particle->localOptimum) <
-		DistanceCalculate(particle->direction - particle->velocity, particle->localOptimum))
+		DistanceCalculate((particle->direction - particle->velocity), particle->localOptimum))
 	{
 		particle->localOptimum = particle->direction;
+		printf("(%d) reszecske uj lokalis optimuma:  x: %.2f, y : %.2f\n", index, particle->localOptimum.x, particle->localOptimum.y);
 
 		if (DistanceCalculate(particle->direction, particle->localOptimum) <
 			DistanceCalculate(particle->direction - particle->velocity, dev_globalOptimum))
 		{
 			dev_globalOptimum = particle->direction;
+			printf("(%d) uj globalis optimuma:  x: %.2f, y : %.2f\n", index, dev_globalOptimum.x, dev_globalOptimum.y);
 		}
 	}
 	__syncthreads();
@@ -115,21 +119,37 @@ __device__ float cudaRandRange(int min, int max)
 
 __global__ void CalculateVelocity() {
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = &dev_particles[index];
-
+	Particle particle = dev_particles[index];
+	float2 old_direction = particle.direction;
+	printf("(%d) old direction x: %.2f, y : %.2f\n", index, particle.direction.x, particle.direction.y);
+	printf("(%d) old position x: %.2f, y : %.2f\n", index, particle.position.x, particle.position.y);
+	float r1 = cudaRand();
+	float r2 = cudaRand();
+	printf("(%d) r1: %.2f r2: %.2f\n", index, r1,r2);
 	//Calculate the velocity
-	particle->velocity = w * particle->velocity
-		+ cudaRand() * c1 * (particle->localOptimum - particle->direction)
-		+ cudaRand() * c2 * (dev_globalOptimum - particle->direction);
-}
+	particle.velocity = w * particle.velocity
+		+ r1 * c1 * (particle.localOptimum - particle.direction)
+		+ r2 * c2 * (dev_globalOptimum - particle.direction);
 
-__global__ void CalculateNewDirection() {
-	int index = blockDim.x * blockIdx.x + threadIdx.x;
-	Particle * particle = &dev_particles[index];
+	printf("(%d) calculated velocity x: %.2f, y : %.2f\n", index, particle.velocity.x, particle.velocity.y);
+	particle.direction = particle.direction + particle.velocity;
+	printf("(%d) new direction x: %.2f, y : %.2f\n", index, particle.direction.x, particle.direction.y);
+	printf("(%d) new position x: %.2f, y : %.2f\n", index, particle.position.x, particle.position.y);
 
-	particle->direction = particle->direction + particle->velocity;
+	particle.position = old_direction;
+
+	dev_particles[index] = particle;
 	__syncthreads();
 }
+
+//__global__ void CalculateNewDirection() {
+//	int index = blockDim.x * blockIdx.x + threadIdx.x;
+//	Particle particle = dev_particles[index];
+//
+//	particle.direction = particle.direction + particle.velocity;
+//	dev_particles[index] = particle;
+//	__syncthreads();
+//}
 
 __global__ void checkParticles(){
 	int index = blockDim.x * blockIdx.x + threadIdx.x;
@@ -146,6 +166,7 @@ void initParticles() {
 		host_particles[i].position = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
 		host_particles[i].localOptimum = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
 		host_particles[i].direction = make_float2(RANDOM(MIN2, MAX2), RANDOM(MIN2, MAX2));
+		host_particles[i].velocity = make_float2(1, 1);
 	}
 }
 
@@ -171,27 +192,27 @@ int main()
 	cudaMemcpyToSymbol(dev_globalOptimum, &host_gOptimum.y, sizeof(float2));
 	checkError();
 
-	checkParticles << <1, N >> > ();
+	//checkParticles <<< kernelStart>>>();
 
-	Evaluation << <1, N >> > ();
+	Evaluation << <kernelStart >> > ();
 	checkError();
 
 	int i = 0;
 	
-	while (i < 100)
+	while (i < N)
 	{
-		CalculateVelocity << <1, N >> > ();
+		CalculateVelocity << <kernelStart >> > ();
 		checkError();
-		CalculateNewDirection << <1, N >> > ();
+		//CalculateNewDirection << <kernelStart >> > ();
+		//checkError();
+		Evaluation << <kernelStart >> > ();
 		checkError();
-		Evaluation << <1, N >> > ();
-		checkError();
-		checkParticles << <1, N >> > ();
+		//checkParticles << <kernelStart >> > ();
 		//system("cls");
 		i++;
 	}
 	//cout << "Vege";
-	cin.get();
+	//cin.get();
 
     return 0;
 }
