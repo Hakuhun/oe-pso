@@ -139,7 +139,6 @@ __global__ void CalculateVelocity() {
 	particle.position = old_direction;
 
 	dev_particles[index] = particle;
-	__syncthreads();
 }
 
 //__global__ void CalculateNewDirection() {
